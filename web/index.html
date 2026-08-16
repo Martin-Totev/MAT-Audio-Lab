@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAT Audio Lab UI</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <a href="https://github.com/Martin-Totev" target="_blank" rel="noopener noreferrer" class="mat-logo-link">
+        <img src="/static/img/MAT Software Solutions Logo.png" alt="MAT Software Solutions Logo" class="mat-logo-img">
+    </a>
+
+    <!-- Vertically Stacked Controls with Expandable Panels -->
+    <div class="center-controls">
+        <!-- Button 1 Container -->
+        <div id="wrapper-1" class="btn-wrapper">
+            <div class="lab-btn-shell">
+                <span class="calibration-help header-help">
+                    <button class="calibration-help-btn" type="button" aria-label="Input-delay calibration instructions">?</button>
+                    <span id="calibration-help-text" class="calibration-help-popover" role="tooltip">
+                        Calibrate Input Delay before relying on corrected reaction times. Use physical speakers, not headphones. Keep the microphone unobstructed and speaker volume clearly audible. You will hear 1 warm-up pip and 5 measured pips; do not click during them. When prompted, press the calibration button 3 times, at least about half a second apart. Keep the mouse, microphone, and speakers in the same positions until calibration finishes.
+                    </span>
+                </span>
+                <button id="btn-1" class="lab-btn" onclick="toggleButton('1')">
+                    <span>Reaction Speed Test</span>
+                    <span class="arrow">▼</span>
+                </button>
+            </div>
+            <div class="expandable-panel">
+                <div class="workspace-box">
+                    <!-- Audio Streamer Section -->
+                    <div class="calibration-action-row">
+                        <button id="capture-btn" class="sub-btn" onclick="streamAudioToGo()" aria-describedby="calibration-help-text">
+                            🔊🎙️ Calibrate Input Delay
+                        </button>
+                    </div>
+                    
+                    <div class="meter-container">
+                        <div class="meter-label-row">
+                            <span id="meter-status">Input Level</span>
+                            <span id="timer-label">00:10</span>
+                        </div>
+                        <div class="meter-track">
+                            <div id="meter-fill" class="meter-fill"></div>
+                        </div>
+                    </div>
+
+                    <!-- Reaction Speed Tester Section -->
+                    <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
+                        <button id="reaction-btn" class="reaction-btn idle">
+                            Start Reaction Test
+                        </button>
+                        <div id="reaction-result" style="font-size: 0.85rem; color: var(--accent-cyan); font-weight: bold; min-height: 1.2em;">
+                            -- ms
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Button 2 Container -->
+        <div id="wrapper-2" class="btn-wrapper">
+            <button id="btn-2" class="lab-btn" onclick="toggleButton('2')">
+                <span>Execute Button 2</span>
+                <span class="arrow">▼</span>
+            </button>
+            <div class="expandable-panel">
+                <div class="workspace-box">
+                    <span style="color: var(--text-dim); font-size: 0.8rem;">[ Button 2 Dynamic Workspace ]</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Side Dashboard Panel -->
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>MAT AUDIO LAB UI</h1>
+                <div id="status-badge" class="badge offline">DISCONNECTED</div>
+            </div>
+
+            <div class="metric-grid">
+                <div class="metric-box">
+                    <div class="metric-label">Backend Target</div>
+                    <div id="backend-val" class="metric-value">Offline Static Mode</div>
+                </div>
+                <div class="metric-box">
+                    <div class="metric-label">Engine Heartbeat (UTC)</div>
+                    <div id="heartbeat-val" class="metric-value">--:--:-- UTC</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="metric-label" style="margin-bottom: 0.8rem;">Live Engine Log Feed</div>
+            <div id="console" class="console-log">
+                <div class="log-entry"><span class="log-time">[LOCAL]</span> UI loaded in standalone editing mode.</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

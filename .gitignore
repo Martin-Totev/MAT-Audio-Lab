@@ -1,0 +1,19 @@
+# Binaries
+/bin/
+/mat-audio-lab
+*.exe
+
+# Go workspace files
+*.test
+*.out
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+/tmp/

@@ -1,0 +1,424 @@
+        :root {
+            --bg-color: #0e0e10;
+            --card-bg: #18181b;
+            --accent-cyan: #00f0ff;
+            --status-green: #00ff66;
+            --status-red: #ff3366;
+            --text-main: #efeff1;
+            --text-dim: #adadb8;
+            --border: #2d2d35;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Consolas', 'Courier New', monospace;
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            justify-content: flex-end;
+            box-sizing: border-box;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        .container {
+            width: 50%;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: 0;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 0.75rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            margin-bottom: 0.75rem;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            color: var(--accent-cyan);
+            letter-spacing: 1px;
+        }
+
+        .badge {
+            padding: 0.35rem 0.75rem;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+            transition: all 0.3s ease;
+        }
+
+        .badge.offline {
+            background: rgba(255, 51, 102, 0.15);
+            color: var(--status-red);
+            border: 1px solid var(--status-red);
+        }
+
+        .badge.online {
+            background: rgba(0, 255, 102, 0.15);
+            color: var(--status-green);
+            border: 1px solid var(--status-green);
+        }
+
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .metric-box {
+            background: #101014;
+            border: 1px solid var(--border);
+            padding: 1rem;
+            border-radius: 6px;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            margin-bottom: 0.4rem;
+        }
+
+        .metric-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #fff;
+        }
+
+        /* Center Control Section */
+        .center-controls {
+            position: absolute;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            width: 525px;
+            max-width: 90vw;
+            z-index: 10;
+        }
+
+        .btn-wrapper {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .lab-btn {
+            background: #101014;
+            color: var(--accent-cyan);
+            border: 1px solid var(--border);
+            padding: 0.8rem 1.2rem;
+            font-family: inherit;
+            font-size: 0.9rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .lab-btn:hover {
+            background: rgba(0, 240, 255, 0.1);
+            border-color: var(--accent-cyan);
+        }
+
+        .lab-btn .arrow {
+            transition: transform 0.3s ease;
+            font-size: 0.75rem;
+        }
+
+        .btn-wrapper.open .lab-btn {
+            border-bottom-left-radius: 0;
+            border-bottom-right-radius: 0;
+            border-color: var(--accent-cyan);
+            background: rgba(0, 240, 255, 0.05);
+        }
+
+        .btn-wrapper.open .arrow {
+            transform: rotate(180deg);
+        }
+
+        .expandable-panel {
+            height: 0;
+            overflow: hidden;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-top: none;
+            border-bottom-left-radius: 6px;
+            border-bottom-right-radius: 6px;
+            transition: height 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease;
+            padding: 0 1rem;
+            box-sizing: border-box;
+        }
+
+        .btn-wrapper.open .expandable-panel {
+            height: 240px;
+            padding: 1rem;
+            border-color: var(--accent-cyan);
+        }
+
+        .workspace-box {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 1.25rem;
+            text-align: center;
+            background: #101014;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .sub-btn {
+            background: transparent;
+            color: var(--accent-cyan);
+            border: 1px solid var(--accent-cyan);
+            padding: 0.75rem 1.5rem;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .sub-btn:hover:not(:disabled) {
+            background: rgba(0, 240, 255, 0.15);
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+        }
+
+        .sub-btn:disabled {
+            border-color: var(--border);
+            color: var(--text-dim);
+            cursor: not-allowed;
+        }
+
+        /* Real-Time Audio Level Meter UI */
+        .meter-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .meter-label-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+        }
+
+        .meter-track {
+            width: 100%;
+            height: 12px;
+            background: #08080a;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .meter-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-cyan) 0%, var(--status-green) 80%, var(--status-red) 100%);
+            transition: width 0.05s linear;
+        }
+
+        .console-log {
+            background: #08080a;
+            border: 1px solid var(--border);
+            padding: 1rem;
+            border-radius: 6px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+            color: var(--text-dim);
+        }
+
+        .log-entry {
+            margin-bottom: 0.3rem;
+        }
+        .log-time { color: var(--accent-cyan); }
+        
+        .mat-logo-link {
+            position: absolute;
+            top: 35px;
+            left: 50px;
+            display: inline-block;
+            z-index: 9999;
+            text-decoration: none;
+            transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+
+        .mat-logo-link:hover {
+            opacity: 0.85;
+            transform: scale(1.05);
+        }
+
+        .mat-logo-img {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            border-radius: 6px;
+            display: block;
+        }
+        .reaction-btn {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Idle / Ready State */
+        .reaction-btn.idle {
+            background: transparent;
+            color: var(--accent-cyan);
+            border: 1px solid var(--accent-cyan);
+        }
+        .reaction-btn.idle:hover {
+            background: rgba(0, 240, 255, 0.15);
+        }
+
+        /* Waiting for Green State */
+        .reaction-btn.waiting {
+            background: #101014;
+            color: var(--status-red);
+            border: 1px solid var(--status-red);
+            cursor: pointer; 
+        }
+
+        /* Active Ready (Green) State */
+        .reaction-btn.ready {
+            background: var(--status-green);
+            color: #000;
+            border: 1px solid var(--status-green);
+            box-shadow: 0 0 15px rgba(0, 255, 102, 0.5);
+        }
+
+        .lab-btn-shell {
+            position: relative;
+            width: 100%;
+        }
+
+        .lab-btn-shell .lab-btn {
+            padding-left: 3.15rem;
+        }
+
+        .calibration-action-row {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .calibration-action-row .sub-btn {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+
+        .calibration-help {
+            position: relative;
+            display: inline-flex;
+            flex: 0 0 auto;
+        }
+
+        .calibration-help.header-help {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 20;
+        }
+
+        .calibration-help.header-help .calibration-help-popover {
+            left: auto;
+            /* Keep the tooltip fully to the left of the help icon so it does
+               not cover the second control/panel below and to the right. */
+            right: calc(100% + 24px);
+            /* Align the tooltip near the header-title text instead of below the icon. */
+            top: 8px;
+            bottom: auto;
+            transform: none;
+            width: min(340px, calc(100vw - 2rem));
+        }
+
+        .calibration-help-btn {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1px solid var(--accent-cyan);
+            background: transparent;
+            color: var(--accent-cyan);
+            font: inherit;
+            font-size: 0.78rem;
+            font-weight: 800;
+            line-height: 1;
+            cursor: help;
+            padding: 0;
+        }
+
+        .calibration-help-btn:hover,
+        .calibration-help-btn:focus-visible {
+            background: rgba(0, 240, 255, 0.14);
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.18);
+        }
+
+        .calibration-help-popover {
+            position: absolute;
+            z-index: 50;
+            left: 50%;
+            bottom: calc(100% + 10px);
+            transform: translateX(-50%);
+            width: min(320px, 78vw);
+            padding: 0.7rem 0.8rem;
+            border: 1px solid var(--accent-cyan);
+            border-radius: 6px;
+            background: #090c11;
+            color: var(--text-main);
+            font-size: 0.76rem;
+            line-height: 1.45;
+            text-align: left;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+            transition: opacity 0.12s ease, visibility 0.12s ease;
+        }
+
+        .calibration-help:hover .calibration-help-popover,
+        .calibration-help:focus-within .calibration-help-popover {
+            opacity: 1;
+            visibility: visible;
+        }

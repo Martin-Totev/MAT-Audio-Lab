@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mat-audio-lab
+  labels:
+    app: mat-audio-lab
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mat-audio-lab
+  template:
+    metadata:
+      labels:
+        app: mat-audio-lab
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+      - name: mat-audio-lab
+        image: mat-audio-lab:v0.1
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mat-audio-lab-service
+spec:
+  type: NodePort
+  selector:
+    app: mat-audio-lab
+  ports:
+  - port: 8080
+    targetPort: 8080
+    nodePort: 30080
