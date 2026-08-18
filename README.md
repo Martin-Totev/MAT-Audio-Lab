@@ -2,7 +2,7 @@
 
 > **In active development**
 
-MAT Audio Lab is a locally deployed web application for reaction-time, rhythm-timing, and audio-assisted input-delay testing and calibration. It combines a Go HTTP/DSP backend with a vanilla HTML/CSS/JavaScript frontend and runs in a local Kind Kubernetes cluster. Development is focused on expanding functionality beyond reaction-time testing.
+MAT Audio Lab is a locally deployed web application for reaction-time, rhythm-timing, and audio-assisted input-delay testing and calibration. It combines a vanilla HTML/CSS/JavaScript frontend with a Go backend that serves the HTTP API and static files and performs WAV/DSP analysis. The provided deployment workflow runs it in a local Kind Kubernetes cluster.
 
 ## Current Features
 
@@ -13,7 +13,7 @@ MAT Audio Lab is a locally deployed web application for reaction-time, rhythm-ti
 - Three physical mouse presses per calibration run for a more robust input-delay estimate.
 - Go-side WAV/PCM analysis using matched-filter probe detection, mouse transient detection, median/MAD statistics, and probe outlier rejection.
 - Automatic application status/heartbeat reporting in the UI.
-- Copyable live engine logs with optional start and end time bounds.
+- Copyable browser-session diagnostic logs with optional start and end time bounds.
 - Browser-presence detection so the development workflow avoids opening duplicate tabs when possible.
 - Dockerized Go application deployed locally through Kind/Kubernetes.
 
@@ -25,7 +25,7 @@ The backend is written in Go and listens on port `8080`. It:
 
 - serves the frontend from `./web`;
 - exposes health, status, and browser-presence endpoints;
-- handles the two UI button API calls;
+- handles informational API calls when the two expandable test panels are toggled;
 - accepts 32-bit float WAV uploads for calibration analysis;
 - performs acoustic probe and mouse-transient DSP;
 - keeps uploaded WAV data in memory and can return it by generated WAV ID.
@@ -126,7 +126,7 @@ A host Go installation is therefore **not required for `make deploy`**. Install 
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Martin-Totev/mat-audio-lab.git
 cd mat-audio-lab
 ```
 
@@ -186,6 +186,8 @@ The browser records one continuous microphone stream while it plays one discarde
 After the first successful calibration in a browser session, the card automatically collapses and its header continues to show the accepted correction. The card can then be expanded or collapsed manually without removing the detailed result inside it.
 
 Calibration requires browser support for `AudioContext.getOutputTimestamp()`.
+
+The correction estimates the pointer-input side of each measurement; it does not calibrate display latency or every possible speaker-distance and clock-drift effect.
 
 ## Metronome Test
 
@@ -329,6 +331,7 @@ The Go server currently exposes:
 | `/healthz` | GET | Health check used by the development workflow |
 | `/api/status` | GET | Returns engine status, UTC time, and environment |
 | `/api/presence` | POST | Receives the browser heartbeat |
+| `/api/presence/close` | POST | Removes a closing browser tab from presence tracking |
 | `/api/check-browser` | GET | Reports whether a recent UI heartbeat has been seen |
 | `/api/button1` | POST | Backend handler used by the first expandable UI control |
 | `/api/button2` | POST | Backend handler used by the second expandable UI control |
