@@ -2,12 +2,21 @@
         const backendVal = document.getElementById('backend-val');
         const heartbeatVal = document.getElementById('heartbeat-val');
         const consoleLog = document.getElementById('console');
+        const engineLogs = [];
+        const browserTabId = window.crypto && typeof window.crypto.randomUUID === 'function'
+            ? window.crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const browserPresenceQuery = `tab_id=${encodeURIComponent(browserTabId)}`;
+
+        window.addEventListener('pagehide', () => {
+            navigator.sendBeacon(`/api/presence/close?${browserPresenceQuery}`);
+        });
 
         // --- Reaction Speed Tester State ---
-        // Both calibration and the later reaction test use POINTER DOWN, not the
-        // DOM click event. pointerdown represents the initial physical press and
-        // therefore does not include however long the user holds the button down
-        // before releasing it.
+        // Both the reaction test and the standalone calibration press control use
+        // POINTER DOWN, not the DOM click event. pointerdown represents the initial
+        // physical press and therefore does not include however long the user holds
+        // the button down before releasing it.
         let reactionState = 'IDLE'; // 'IDLE' | 'WAITING' | 'READY'
         let reactionTimeoutId = null;
         let startTime = 0;
@@ -21,8 +30,8 @@
         }
 
         function handleReactionPointerDown(event) {
-            const btn = document.getElementById('reaction-btn');
-            const resultDisplay = document.getElementById('reaction-result');
+            const btn = document.getElementById('reaction-test-btn');
+            const resultDisplay = document.getElementById('reaction-test-result');
 
             if (btn.disabled) return;
 
@@ -69,22 +78,626 @@
             }
         }
 
-        // The ordinary reaction test is permanently bound to pointerdown. During
-        // Calibration uses a temporary CAPTURE listener on this same button
-        // intercepts the event first and prevents this handler from running.
-        document.getElementById('reaction-btn').addEventListener('pointerdown', handleReactionPointerDown);
+        // The ordinary reaction test is permanently bound to its own button.
+        // Calibration uses a separate temporary pointerdown listener below.
+        document.getElementById('reaction-test-btn').addEventListener('pointerdown', handleReactionPointerDown);
 
-        function appendLog(timeStr, msg) {
+        function appendLog(timeStr, msg, occurredAt = new Date()) {
+            const log = {
+                timestampMs: occurredAt.getTime(),
+                timeLabel: String(timeStr),
+                message: String(msg)
+            };
+            engineLogs.push(log);
+
             const entry = document.createElement('div');
             entry.className = 'log-entry';
-            entry.innerHTML = `<span class="log-time">[${timeStr}]</span> ${msg}`;
+            const time = document.createElement('span');
+            time.className = 'log-time';
+            time.textContent = `[${log.timeLabel}]`;
+            entry.append(time, document.createTextNode(` ${log.message}`));
             consoleLog.appendChild(entry);
             consoleLog.scrollTop = consoleLog.scrollHeight;
         }
 
+        async function writeLogTextToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return;
+            }
+
+            const fallback = document.createElement('textarea');
+            fallback.value = text;
+            fallback.setAttribute('readonly', '');
+            fallback.style.position = 'fixed';
+            fallback.style.opacity = '0';
+            document.body.appendChild(fallback);
+            fallback.select();
+            const copied = document.execCommand('copy');
+            fallback.remove();
+            if (!copied) {
+                throw new Error('Clipboard access was denied');
+            }
+        }
+
+        async function copyEngineLogs() {
+            const button = document.getElementById('copy-logs-btn');
+            const fromValue = document.getElementById('log-copy-from').value;
+            const throughValue = document.getElementById('log-copy-through').value;
+            const status = document.getElementById('log-copy-status');
+            const fromMs = fromValue ? new Date(fromValue).getTime() : null;
+            const throughMs = throughValue ? new Date(throughValue).getTime() : null;
+
+            status.className = 'log-copy-status';
+            if ((fromMs !== null && !Number.isFinite(fromMs)) ||
+                (throughMs !== null && !Number.isFinite(throughMs))) {
+                status.classList.add('error');
+                status.textContent = 'Enter valid local date and time bounds.';
+                return;
+            }
+            if (fromMs !== null && throughMs !== null && fromMs > throughMs) {
+                status.classList.add('error');
+                status.textContent = 'The From bound must not be later than Through.';
+                return;
+            }
+
+            const selectedLogs = engineLogs.filter((log) =>
+                (fromMs === null || log.timestampMs >= fromMs) &&
+                (throughMs === null || log.timestampMs <= throughMs)
+            );
+            if (selectedLogs.length === 0) {
+                status.textContent = 'No log entries fall within those bounds.';
+                return;
+            }
+
+            button.disabled = true;
+            try {
+                const text = selectedLogs
+                    .map((log) => `[${log.timeLabel}] ${log.message}`)
+                    .join('\n');
+                await writeLogTextToClipboard(text);
+                const noun = selectedLogs.length === 1 ? 'entry' : 'entries';
+                status.textContent = `Copied ${selectedLogs.length} log ${noun}.`;
+            } catch (error) {
+                status.classList.add('error');
+                status.textContent = `Could not copy logs: ${error.message}`;
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        document.getElementById('copy-logs-btn').addEventListener('click', copyEngineLogs);
+        appendLog('LOCAL', 'UI loaded in standalone editing mode.');
+
+        // --- Metronome Timing Test ---
+        // The selected duration applies to the silent portion. Before scoring begins,
+        // the beat is fully audible for five seconds and fades linearly for three.
+        const METRONOME_FULL_VOLUME_SECONDS = 5;
+        const METRONOME_FADE_SECONDS = 3;
+        const METRONOME_MIN_BPM = 50;
+        const METRONOME_MAX_BPM = 180;
+        const METRONOME_ALLOWED_DURATIONS = [10, 30, 60];
+
+        let selectedMetronomeDurationSeconds = 10;
+        let metronomeState = 'IDLE'; // 'IDLE' | 'STARTING' | 'RUNNING'
+        let metronomeRun = null;
+        let metronomeUiIntervalId = null;
+        let metronomeFinishTimeoutId = null;
+        let metronomeRunToken = 0;
+
+        function formatMetronomeTime(remainingMs) {
+            const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        function getMetronomeDurationButtons() {
+            return Array.from(document.querySelectorAll('.metronome-duration-btn'));
+        }
+
+        function setMetronomeDuration(seconds) {
+            if (metronomeState !== 'IDLE' || !METRONOME_ALLOWED_DURATIONS.includes(seconds)) {
+                return;
+            }
+
+            selectedMetronomeDurationSeconds = seconds;
+            getMetronomeDurationButtons().forEach((button) => {
+                const selected = Number(button.dataset.duration) === seconds;
+                button.classList.toggle('selected', selected);
+                button.setAttribute('aria-pressed', String(selected));
+            });
+            document.getElementById('metronome-timer').textContent =
+                formatMetronomeTime(seconds * 1000);
+        }
+
+        function setMetronomeControlsLocked(locked) {
+            getMetronomeDurationButtons().forEach((button) => {
+                button.disabled = locked;
+            });
+            document.getElementById('metronome-start-btn').disabled = locked;
+        }
+
+        function mapMetronomeAudioTimeToPerformanceMs(audioCtx, targetContextTime) {
+            if (typeof audioCtx.getOutputTimestamp === 'function') {
+                const timestamp = audioCtx.getOutputTimestamp();
+                const contextTime = Number(timestamp?.contextTime);
+                const performanceTime = Number(timestamp?.performanceTime);
+                if (
+                    Number.isFinite(contextTime) &&
+                    Number.isFinite(performanceTime) &&
+                    contextTime >= 0 &&
+                    performanceTime > 0
+                ) {
+                    return performanceTime + (targetContextTime - contextTime) * 1000;
+                }
+            }
+
+            // Fall back to the browser's estimated physical output latency when a
+            // direct AudioContext/performance clock mapping is unavailable.
+            const reportedOutputLatency = Number(audioCtx.outputLatency);
+            const reportedBaseLatency = Number(audioCtx.baseLatency);
+            const outputLatencySeconds = Number.isFinite(reportedOutputLatency) && reportedOutputLatency >= 0
+                ? reportedOutputLatency
+                : (Number.isFinite(reportedBaseLatency) && reportedBaseLatency >= 0
+                    ? reportedBaseLatency
+                    : 0);
+
+            return performance.now() +
+                (targetContextTime - audioCtx.currentTime + outputLatencySeconds) * 1000;
+        }
+
+        function scheduleMetronomeClick(audioCtx, destination, contextTime, beatIndex) {
+            const oscillator = audioCtx.createOscillator();
+            const clickGain = audioCtx.createGain();
+
+            oscillator.type = 'square';
+            oscillator.frequency.setValueAtTime(beatIndex % 4 === 0 ? 1320 : 940, contextTime);
+            clickGain.gain.setValueAtTime(0.0001, contextTime);
+            clickGain.gain.exponentialRampToValueAtTime(0.72, contextTime + 0.003);
+            clickGain.gain.exponentialRampToValueAtTime(0.0001, contextTime + 0.045);
+
+            oscillator.connect(clickGain);
+            clickGain.connect(destination);
+            oscillator.start(contextTime);
+            oscillator.stop(contextTime + 0.05);
+        }
+
+        function clearMetronomeTimers() {
+            if (metronomeUiIntervalId !== null) {
+                clearInterval(metronomeUiIntervalId);
+                metronomeUiIntervalId = null;
+            }
+            if (metronomeFinishTimeoutId !== null) {
+                clearTimeout(metronomeFinishTimeoutId);
+                metronomeFinishTimeoutId = null;
+            }
+        }
+
+        function closeMetronomeAudio(run) {
+            if (!run) return;
+
+            try {
+                run.masterGain.gain.cancelScheduledValues(run.audioContext.currentTime);
+                run.masterGain.gain.setValueAtTime(0, run.audioContext.currentTime);
+            } catch (_) {
+                // The context may already have been closed.
+            }
+            Promise.resolve(run.audioContext.close()).catch(() => {});
+        }
+
+        function resetMetronomeControls() {
+            setMetronomeControlsLocked(false);
+            const tapButton = document.getElementById('metronome-tap-btn');
+            tapButton.disabled = true;
+            tapButton.className = 'metronome-tap-btn';
+            tapButton.textContent = 'Tap the Beat';
+        }
+
+        function summarizeMetronomeRun(run) {
+            const absoluteErrors = Array.from(run.taps.values(), (tap) => Math.abs(tap.errorMs));
+            const hitCount = absoluteErrors.length;
+            const expectedCount = Math.max(0, run.lastExpectedBeatIndex - run.firstExpectedBeatIndex + 1);
+            const missedCount = Math.max(0, expectedCount - hitCount);
+            const meanAbsoluteErrorMs = hitCount > 0
+                ? absoluteErrors.reduce((sum, error) => sum + error, 0) / hitCount
+                : null;
+
+            return {
+                hitCount,
+                expectedCount,
+                missedCount,
+                meanAbsoluteErrorMs
+            };
+        }
+
+        function clearMetronomeTimeline() {
+            const timeline = document.getElementById('metronome-timeline');
+            timeline.hidden = true;
+            timeline.classList.remove('revealed');
+            document.getElementById('metronome-expected-track').replaceChildren();
+            document.getElementById('metronome-actual-track').replaceChildren();
+            document.getElementById('wrapper-2').classList.remove('timeline-visible');
+        }
+
+        function addMetronomeTimelineMarker(track, percent, className, label) {
+            const marker = document.createElement('span');
+            marker.className = `metronome-timeline-marker ${className}`;
+            marker.style.left = `${Math.min(100, Math.max(0, percent))}%`;
+            marker.title = label;
+            marker.setAttribute('role', 'img');
+            marker.setAttribute('aria-label', label);
+            track.appendChild(marker);
+        }
+
+        function renderMetronomeTimeline(run) {
+            clearMetronomeTimeline();
+
+            const expectedTrack = document.getElementById('metronome-expected-track');
+            const actualTrack = document.getElementById('metronome-actual-track');
+            const durationMs = run.durationSeconds * 1000;
+
+            for (
+                let beatIndex = run.firstExpectedBeatIndex;
+                beatIndex <= run.lastExpectedBeatIndex;
+                beatIndex += 1
+            ) {
+                const expectedPerformanceMs =
+                    run.beatOriginPerformanceMs + beatIndex * run.beatIntervalMs;
+                const offsetMs = expectedPerformanceMs - run.silentStartPerformanceMs;
+                const percent = offsetMs / durationMs * 100;
+                addMetronomeTimelineMarker(
+                    expectedTrack,
+                    percent,
+                    'expected',
+                    `Expected beat at ${(offsetMs / 1000).toFixed(2)}s`
+                );
+            }
+
+            const actualTaps = Array.isArray(run.actualTaps)
+                ? run.actualTaps
+                : Array.from(run.taps.values());
+            const sortedTaps = Array.from(actualTaps).sort(
+                (left, right) =>
+                    left.correctedTapPerformanceMs - right.correctedTapPerformanceMs
+            );
+            sortedTaps.forEach((tap) => {
+                const offsetMs =
+                    tap.correctedTapPerformanceMs - run.silentStartPerformanceMs;
+                const percent = offsetMs / durationMs * 100;
+                const absoluteErrorMs = Math.abs(tap.errorMs);
+                const direction = tap.errorMs < 0 ? 'early' : 'late';
+                const accuracyClass = absoluteErrorMs > 50 ? 'actual off-beat' : 'actual';
+                addMetronomeTimelineMarker(
+                    actualTrack,
+                    percent,
+                    accuracyClass,
+                    `Actual tap at ${(offsetMs / 1000).toFixed(2)}s · ${absoluteErrorMs.toFixed(1)}ms ${direction}`
+                );
+            });
+
+            document.getElementById('metronome-timeline-end').textContent =
+                `${run.durationSeconds}s`;
+            const timeline = document.getElementById('metronome-timeline');
+            timeline.hidden = false;
+            timeline.classList.remove('revealed');
+            void timeline.offsetWidth;
+            timeline.classList.add('revealed');
+            document.getElementById('wrapper-2').classList.add('timeline-visible');
+        }
+
+        function finishMetronomeTest() {
+            if (metronomeState !== 'RUNNING' || !metronomeRun) return;
+
+            const run = metronomeRun;
+            const summary = summarizeMetronomeRun(run);
+            const result = document.getElementById('metronome-result');
+            const status = document.getElementById('metronome-status');
+            const startButton = document.getElementById('metronome-start-btn');
+
+            clearMetronomeTimers();
+            metronomeState = 'IDLE';
+            metronomeRun = null;
+            resetMetronomeControls();
+            document.getElementById('metronome-progress').style.width = '100%';
+            document.getElementById('metronome-timer').textContent = '00:00';
+            startButton.textContent = 'Run Metronome Test Again';
+
+            if (summary.meanAbsoluteErrorMs === null) {
+                result.textContent = 'No scored taps recorded';
+                status.textContent =
+                    `0/${summary.expectedCount} expected silent beats captured at ${run.bpm} BPM.`;
+                appendLog(
+                    new Date().toISOString().substr(11, 8) + ' UTC',
+                    `[METRONOME] ${run.durationSeconds}s silent test at ${run.bpm} BPM finished without scored taps.`
+                );
+            } else {
+                result.textContent =
+                    `Average distance: ${summary.meanAbsoluteErrorMs.toFixed(1)} ms`;
+                status.textContent =
+                    `${summary.hitCount}/${summary.expectedCount} expected beats captured · ${summary.missedCount} missed · ${run.bpm} BPM`;
+                appendLog(
+                    new Date().toISOString().substr(11, 8) + ' UTC',
+                    `[METRONOME] ${run.durationSeconds}s silent test at ${run.bpm} BPM: mean absolute error ${summary.meanAbsoluteErrorMs.toFixed(2)}ms across ${summary.hitCount}/${summary.expectedCount} expected beats; ${summary.missedCount} missed.`
+                );
+            }
+
+            renderMetronomeTimeline(run);
+            closeMetronomeAudio(run);
+        }
+
+        function cancelMetronomeTest() {
+            if (metronomeState === 'IDLE') return;
+
+            metronomeRunToken += 1;
+            const run = metronomeRun;
+            clearMetronomeTimers();
+            metronomeState = 'IDLE';
+            metronomeRun = null;
+            resetMetronomeControls();
+            document.getElementById('metronome-bpm').textContent = '-- BPM';
+            document.getElementById('metronome-timer').textContent =
+                formatMetronomeTime(selectedMetronomeDurationSeconds * 1000);
+            document.getElementById('metronome-progress').style.width = '0%';
+            document.getElementById('metronome-status').textContent = 'Metronome test cancelled.';
+            document.getElementById('metronome-result').textContent = '-- ms average error';
+            clearMetronomeTimeline();
+            closeMetronomeAudio(run);
+        }
+
+        function updateMetronomeUI() {
+            if (metronomeState !== 'RUNNING' || !metronomeRun) return;
+
+            const run = metronomeRun;
+            const now = performance.now();
+            const tapButton = document.getElementById('metronome-tap-btn');
+            const status = document.getElementById('metronome-status');
+            const elapsedMs = Math.max(0, now - run.beatOriginPerformanceMs);
+            const totalMs = run.testEndPerformanceMs - run.beatOriginPerformanceMs;
+            const progressPercent = Math.min(100, Math.max(0, elapsedMs / totalMs * 100));
+
+            document.getElementById('metronome-progress').style.width = `${progressPercent}%`;
+            document.getElementById('metronome-timer').textContent =
+                formatMetronomeTime(run.testEndPerformanceMs - now);
+
+            const inPractice = now < run.fullVolumeEndPerformanceMs;
+            const inFade = !inPractice && now < run.silentStartPerformanceMs;
+            tapButton.classList.toggle('practice', inPractice);
+            tapButton.classList.toggle('fading', inFade);
+            tapButton.classList.toggle('scoring', !inPractice && !inFade);
+
+            let phaseStatus;
+            if (inPractice) {
+                tapButton.textContent = 'Tap Along — Practice';
+                phaseStatus = `Listen and lock onto the beat. Full volume for ${Math.max(0, Math.ceil((run.fullVolumeEndPerformanceMs - now) / 1000))}s.`;
+            } else if (inFade) {
+                tapButton.textContent = 'Keep Tapping — Fading';
+                phaseStatus = `Keep the same tempo. Sound disappears in ${Math.max(0, Math.ceil((run.silentStartPerformanceMs - now) / 1000))}s.`;
+            } else {
+                tapButton.textContent = 'Tap the Beat — Scored';
+                phaseStatus = `Sound is off. Keep the learned tempo · ${run.taps.size} scored beats captured.`;
+            }
+
+            if (!run.feedbackUntilPerformanceMs || now >= run.feedbackUntilPerformanceMs) {
+                status.textContent = phaseStatus;
+            }
+        }
+
+        function handleMetronomePointerDown(event) {
+            const pointerArrivalPerformanceMs = performance.now();
+            event.preventDefault();
+
+            if (metronomeState !== 'RUNNING' || !metronomeRun) return;
+
+            const run = metronomeRun;
+            const tapButton = document.getElementById('metronome-tap-btn');
+            tapButton.classList.add('registered');
+            setTimeout(() => tapButton.classList.remove('registered'), 70);
+
+            // Audible and fading taps are useful practice but are deliberately omitted
+            // from the score. The physical pointer delay measured by Input Calibration
+            // is removed before assigning a tap to the nearest expected silent beat.
+            const correctedTapPerformanceMs =
+                pointerArrivalPerformanceMs - sessionLatencyOffsetMs;
+            if (correctedTapPerformanceMs < run.silentStartPerformanceMs) {
+                return;
+            }
+            if (correctedTapPerformanceMs >= run.testEndPerformanceMs) {
+                return;
+            }
+            const expectedBeatIndex = Math.round(
+                (correctedTapPerformanceMs - run.beatOriginPerformanceMs) /
+                run.beatIntervalMs
+            );
+
+            if (
+                expectedBeatIndex < run.firstExpectedBeatIndex ||
+                expectedBeatIndex > run.lastExpectedBeatIndex
+            ) {
+                return;
+            }
+            const expectedPerformanceMs =
+                run.beatOriginPerformanceMs + expectedBeatIndex * run.beatIntervalMs;
+            const errorMs = correctedTapPerformanceMs - expectedPerformanceMs;
+            const tap = {
+                pointerArrivalPerformanceMs,
+                correctedTapPerformanceMs,
+                expectedPerformanceMs,
+                errorMs
+            };
+            run.actualTaps.push(tap);
+
+            if (run.taps.has(expectedBeatIndex)) {
+                run.feedbackUntilPerformanceMs = pointerArrivalPerformanceMs + 450;
+                document.getElementById('metronome-status').textContent =
+                    'That expected beat already has a scored tap.';
+                return;
+            }
+
+            run.taps.set(expectedBeatIndex, tap);
+
+            const direction = errorMs < 0 ? 'early' : 'late';
+            run.feedbackUntilPerformanceMs = pointerArrivalPerformanceMs + 450;
+            document.getElementById('metronome-status').textContent =
+                `Scored tap: ${Math.abs(errorMs).toFixed(1)} ms ${direction}.`;
+        }
+
+        async function startMetronomeTest() {
+            if (metronomeState !== 'IDLE') return;
+
+            const calibrationButton = document.getElementById('input-calibration-start-btn');
+            const startButton = document.getElementById('metronome-start-btn');
+            const tapButton = document.getElementById('metronome-tap-btn');
+            const status = document.getElementById('metronome-status');
+            const result = document.getElementById('metronome-result');
+
+            if (calibrationButton.disabled) {
+                status.textContent = 'Finish Input Delay Calibration before starting the metronome.';
+                return;
+            }
+
+            const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextCtor) {
+                status.textContent = 'This browser does not support Web Audio.';
+                return;
+            }
+
+            const runToken = ++metronomeRunToken;
+            clearMetronomeTimeline();
+            metronomeState = 'STARTING';
+            setMetronomeControlsLocked(true);
+            tapButton.disabled = true;
+            result.textContent = '-- ms average error';
+            status.textContent = 'Starting the audio clock...';
+            document.getElementById('metronome-progress').style.width = '0%';
+
+            let audioContext = null;
+            try {
+                audioContext = new AudioContextCtor({ latencyHint: 'interactive' });
+                await audioContext.resume();
+
+                if (runToken !== metronomeRunToken) {
+                    await audioContext.close();
+                    return;
+                }
+
+                const bpm = Math.floor(
+                    Math.random() * (METRONOME_MAX_BPM - METRONOME_MIN_BPM + 1)
+                ) + METRONOME_MIN_BPM;
+                const beatIntervalSeconds = 60 / bpm;
+                const beatIntervalMs = beatIntervalSeconds * 1000;
+                const leadAndFadeSeconds =
+                    METRONOME_FULL_VOLUME_SECONDS + METRONOME_FADE_SECONDS;
+                const durationSeconds = selectedMetronomeDurationSeconds;
+                const beatOriginContextTime = audioContext.currentTime + 0.15;
+                const fullVolumeEndContextTime =
+                    beatOriginContextTime + METRONOME_FULL_VOLUME_SECONDS;
+                const silentStartContextTime =
+                    fullVolumeEndContextTime + METRONOME_FADE_SECONDS;
+                const beatOriginPerformanceMs = mapMetronomeAudioTimeToPerformanceMs(
+                    audioContext,
+                    beatOriginContextTime
+                );
+                const fullVolumeEndPerformanceMs =
+                    beatOriginPerformanceMs + METRONOME_FULL_VOLUME_SECONDS * 1000;
+                const silentStartPerformanceMs =
+                    beatOriginPerformanceMs + leadAndFadeSeconds * 1000;
+                const testEndPerformanceMs =
+                    silentStartPerformanceMs + durationSeconds * 1000;
+                const firstExpectedBeatIndex = Math.ceil(
+                    leadAndFadeSeconds * 1000 / beatIntervalMs - 1e-9
+                );
+                const lastExpectedBeatIndex = Math.floor(
+                    (leadAndFadeSeconds * 1000 + durationSeconds * 1000 - 0.001) /
+                    beatIntervalMs
+                );
+
+                const masterGain = audioContext.createGain();
+                masterGain.gain.setValueAtTime(0, audioContext.currentTime);
+                masterGain.gain.setValueAtTime(0.46, beatOriginContextTime);
+                masterGain.gain.setValueAtTime(0.46, fullVolumeEndContextTime);
+                masterGain.gain.linearRampToValueAtTime(0, silentStartContextTime);
+                masterGain.connect(audioContext.destination);
+
+                for (
+                    let beatIndex = 0;
+                    beatIndex * beatIntervalSeconds < leadAndFadeSeconds - 1e-9;
+                    beatIndex += 1
+                ) {
+                    scheduleMetronomeClick(
+                        audioContext,
+                        masterGain,
+                        beatOriginContextTime + beatIndex * beatIntervalSeconds,
+                        beatIndex
+                    );
+                }
+
+                metronomeRun = {
+                    audioContext,
+                    masterGain,
+                    bpm,
+                    beatIntervalMs,
+                    durationSeconds,
+                    beatOriginPerformanceMs,
+                    fullVolumeEndPerformanceMs,
+                    silentStartPerformanceMs,
+                    testEndPerformanceMs,
+                    firstExpectedBeatIndex,
+                    lastExpectedBeatIndex,
+                    taps: new Map(),
+                    actualTaps: [],
+                    feedbackUntilPerformanceMs: 0
+                };
+                metronomeState = 'RUNNING';
+                tapButton.disabled = false;
+                document.getElementById('metronome-bpm').textContent = `${bpm} BPM`;
+                startButton.textContent = 'Metronome Test Running...';
+
+                appendLog(
+                    new Date().toISOString().substr(11, 8) + ' UTC',
+                    `[METRONOME] Started ${durationSeconds}s silent challenge at ${bpm} BPM after 5s audible + 3s fade. Pointer correction: ${sessionLatencyOffsetMs.toFixed(2)}ms.`
+                );
+
+                updateMetronomeUI();
+                metronomeUiIntervalId = setInterval(updateMetronomeUI, 50);
+                metronomeFinishTimeoutId = setTimeout(
+                    finishMetronomeTest,
+                    Math.max(0, testEndPerformanceMs - performance.now()) + 5
+                );
+            } catch (error) {
+                if (runToken !== metronomeRunToken) return;
+
+                metronomeState = 'IDLE';
+                metronomeRun = null;
+                clearMetronomeTimers();
+                resetMetronomeControls();
+                document.getElementById('metronome-bpm').textContent = '-- BPM';
+                document.getElementById('metronome-timer').textContent =
+                    formatMetronomeTime(selectedMetronomeDurationSeconds * 1000);
+                status.textContent = `Could not start metronome: ${error.message}`;
+                startButton.textContent = 'Start Metronome Test';
+                if (audioContext) {
+                    Promise.resolve(audioContext.close()).catch(() => {});
+                }
+            }
+        }
+
+        getMetronomeDurationButtons().forEach((button) => {
+            button.addEventListener('click', () => {
+                setMetronomeDuration(Number(button.dataset.duration));
+            });
+        });
+        document.getElementById('metronome-start-btn')
+            .addEventListener('click', startMetronomeTest);
+        document.getElementById('metronome-tap-btn')
+            .addEventListener('pointerdown', handleMetronomePointerDown);
+
         async function toggleButton(id) {
             const wrapper = document.getElementById(`wrapper-${id}`);
             const isOpen = wrapper.classList.toggle('open');
+            if (id === '2' && !isOpen && metronomeState !== 'IDLE') {
+                cancelMetronomeTest();
+            }
             
             const nowUTC = new Date().toISOString().substr(11, 8) + " UTC";
             try {
@@ -115,6 +728,38 @@
         // clock, any constant sample-zero alignment error is present with opposite sign
         // in the two measurements and cancels when they are added.
         let sessionLatencyOffsetMs = 0;
+        let inputCalibrationCompletedOnce = false;
+
+        function setInputCalibrationCollapsed(collapsed) {
+            if (collapsed && !inputCalibrationCompletedOnce) {
+                return false;
+            }
+
+            const calibrationCard = document.getElementById('input-calibration-card');
+            const toggle = document.getElementById('input-calibration-toggle');
+            const label = document.getElementById('input-calibration-toggle-label');
+            calibrationCard.classList.toggle('collapsed', collapsed);
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+            label.textContent = collapsed ? 'Expand' : 'Collapse';
+            toggle.title = collapsed
+                ? 'Expand Input Delay Calibration'
+                : 'Collapse Input Delay Calibration';
+            return true;
+        }
+
+        function unlockInputCalibrationCollapse() {
+            inputCalibrationCompletedOnce = true;
+            const toggle = document.getElementById('input-calibration-toggle');
+            toggle.disabled = false;
+            toggle.title = 'Collapse Input Delay Calibration';
+        }
+
+        document.getElementById('input-calibration-toggle').addEventListener('click', () => {
+            const calibrationCard = document.getElementById('input-calibration-card');
+            setInputCalibrationCollapsed(
+                !calibrationCard.classList.contains('collapsed')
+            );
+        });
 
         const AUDIO_PROCESS_BUFFER_SIZE = 1024;
         const CALIBRATION_DURATION_SECONDS = 13;
@@ -236,11 +881,11 @@
         }
 
         async function measureClickRegistrationAgainstAudio() {
-            const meterFill = document.getElementById('meter-fill');
-            const meterStatus = document.getElementById('meter-status');
-            const timerLabel = document.getElementById('timer-label');
-            const reactionBtn = document.getElementById('reaction-btn');
-            const reactionResult = document.getElementById('reaction-result');
+            const meterFill = document.getElementById('input-calibration-meter-fill');
+            const meterStatus = document.getElementById('input-calibration-meter-status');
+            const timerLabel = document.getElementById('input-calibration-timer');
+            const calibrationPressBtn = document.getElementById('input-calibration-press-btn');
+            const calibrationResult = document.getElementById('input-calibration-result');
             const nowUTC = () => new Date().toISOString().substr(11, 8) + ' UTC';
 
             let stream = null;
@@ -354,10 +999,10 @@
 
                 meterStatus.innerText = 'STARTING ACOUSTIC LOOPBACK...';
                 timerLabel.innerText = `00:${String(CALIBRATION_DURATION_SECONDS).padStart(2, '0')}`;
-                reactionBtn.disabled = true;
-                reactionBtn.className = 'reaction-btn waiting';
-                reactionBtn.innerText = 'LISTEN FOR CALIBRATION PROBES...';
-                reactionResult.innerText = 'Keep speakers audible and the room reasonably quiet.';
+                calibrationPressBtn.disabled = true;
+                calibrationPressBtn.className = 'calibration-press-btn waiting';
+                calibrationPressBtn.innerText = 'LISTEN FOR CALIBRATION PROBES...';
+                calibrationResult.innerText = 'Keep speakers audible and the room reasonably quiet.';
 
                 await recordingStartedPromise;
 
@@ -424,11 +1069,10 @@
                 // Let the final short probe decay before accepting the mouse press.
                 await sleep(180);
 
-                cancelReactionTest();
-                reactionBtn.disabled = false;
-                reactionBtn.className = 'reaction-btn ready';
-                reactionBtn.innerText = `CALIBRATE — PRESS 1 OF ${MOUSE_PRESS_COUNT}`;
-                reactionResult.innerText = `Press this button ${MOUSE_PRESS_COUNT} times, about half a second apart.`;
+                calibrationPressBtn.disabled = false;
+                calibrationPressBtn.className = 'calibration-press-btn ready';
+                calibrationPressBtn.innerText = `CALIBRATE — PRESS 1 OF ${MOUSE_PRESS_COUNT}`;
+                calibrationResult.innerText = `Press this button ${MOUSE_PRESS_COUNT} times, about half a second apart.`;
                 meterStatus.innerText = `PROBES CAPTURED — ${MOUSE_PRESS_COUNT} CALIBRATION PRESSES NEEDED`;
 
                 calibrationPointerHandler = (event) => {
@@ -450,30 +1094,30 @@
                         `[POINTER-JS] Calibration press ${pressNumber}/${MOUSE_PRESS_COUNT} registered at +${pointerOffsetMs.toFixed(2)}ms on the shared WAV clock.`
                     );
 
-                    reactionBtn.disabled = true;
-                    reactionBtn.className = 'reaction-btn waiting';
+                    calibrationPressBtn.disabled = true;
+                    calibrationPressBtn.className = 'calibration-press-btn waiting';
 
                     if (pressNumber >= MOUSE_PRESS_COUNT) {
-                        reactionBtn.innerText = `${MOUSE_PRESS_COUNT}/${MOUSE_PRESS_COUNT} PRESSES CAPTURED`;
-                        reactionResult.innerText = 'All mouse presses captured. Keep still while recording finishes...';
+                        calibrationPressBtn.innerText = `${MOUSE_PRESS_COUNT}/${MOUSE_PRESS_COUNT} PRESSES CAPTURED`;
+                        calibrationResult.innerText = 'All mouse presses captured. Keep still while recording finishes...';
                         meterStatus.innerText = 'MOUSE PRESSES CAPTURED — FINISHING RECORDING';
                         return;
                     }
 
-                    reactionBtn.innerText = `PRESS ${pressNumber + 1} OF ${MOUSE_PRESS_COUNT} — WAIT...`;
-                    reactionResult.innerText = `Captured ${pressNumber}/${MOUSE_PRESS_COUNT}. Press again when the button turns green.`;
+                    calibrationPressBtn.innerText = `PRESS ${pressNumber + 1} OF ${MOUSE_PRESS_COUNT} — WAIT...`;
+                    calibrationResult.innerText = `Captured ${pressNumber}/${MOUSE_PRESS_COUNT}. Press again when the button turns green.`;
 
                     calibrationReenableTimeoutId = setTimeout(() => {
                         calibrationReenableTimeoutId = null;
                         if (jsPointerOffsetsMs.length < MOUSE_PRESS_COUNT) {
-                            reactionBtn.disabled = false;
-                            reactionBtn.className = 'reaction-btn ready';
-                            reactionBtn.innerText = `CALIBRATE — PRESS ${jsPointerOffsetsMs.length + 1} OF ${MOUSE_PRESS_COUNT}`;
+                            calibrationPressBtn.disabled = false;
+                            calibrationPressBtn.className = 'calibration-press-btn ready';
+                            calibrationPressBtn.innerText = `CALIBRATE — PRESS ${jsPointerOffsetsMs.length + 1} OF ${MOUSE_PRESS_COUNT}`;
                         }
                     }, MOUSE_PRESS_COOLDOWN_MS);
                 };
 
-                reactionBtn.addEventListener('pointerdown', calibrationPointerHandler, true);
+                calibrationPressBtn.addEventListener('pointerdown', calibrationPointerHandler, true);
 
                 appendLog(
                     nowUTC(),
@@ -484,7 +1128,7 @@
                 timerLabel.innerText = '00:00';
 
                 if (calibrationPointerHandler) {
-                    reactionBtn.removeEventListener('pointerdown', calibrationPointerHandler, true);
+                    calibrationPressBtn.removeEventListener('pointerdown', calibrationPointerHandler, true);
                     calibrationPointerHandler = null;
                 }
                 if (calibrationReenableTimeoutId !== null) {
@@ -492,9 +1136,9 @@
                     calibrationReenableTimeoutId = null;
                 }
 
-                reactionBtn.disabled = true;
-                reactionBtn.className = 'reaction-btn waiting';
-                reactionBtn.innerText = 'CALIBRATION PROCESSING...';
+                calibrationPressBtn.disabled = true;
+                calibrationPressBtn.className = 'calibration-press-btn waiting';
+                calibrationPressBtn.innerText = 'CALIBRATION PROCESSING...';
 
                 if (jsPointerOffsetsMs.length !== MOUSE_PRESS_COUNT) {
                     throw new Error(`Calibration needs exactly ${MOUSE_PRESS_COUNT} mouse presses; captured ${jsPointerOffsetsMs.length}. Please retry and follow the ? instructions.`);
@@ -729,8 +1373,7 @@
                 };
             } finally {
                 if (calibrationPointerHandler) {
-                    const btn = document.getElementById('reaction-btn');
-                    btn.removeEventListener('pointerdown', calibrationPointerHandler, true);
+                    calibrationPressBtn.removeEventListener('pointerdown', calibrationPointerHandler, true);
                     calibrationPointerHandler = null;
                 }
                 if (calibrationReenableTimeoutId !== null) {
@@ -770,42 +1413,56 @@
             }
         }
 
-        async function streamAudioToGo() {
-            const captureBtn = document.getElementById('capture-btn');
-            const meterStatus = document.getElementById('meter-status');
-            const reactionBtn = document.getElementById('reaction-btn');
-            const reactionResult = document.getElementById('reaction-result');
+        async function startInputCalibration() {
+            const captureBtn = document.getElementById('input-calibration-start-btn');
+            const meterStatus = document.getElementById('input-calibration-meter-status');
+            const calibrationPressBtn = document.getElementById('input-calibration-press-btn');
+            const calibrationResult = document.getElementById('input-calibration-result');
             const nowUTC = () => new Date().toISOString().substr(11, 8) + ' UTC';
+            let autoCollapseAfterCompletion = false;
 
             if (captureBtn.disabled) return;
+            if (metronomeState !== 'IDLE') {
+                calibrationResult.innerText = 'Finish or cancel the Metronome Test before calibrating input delay.';
+                meterStatus.innerText = 'Metronome Test In Progress';
+                return;
+            }
 
-            cancelReactionTest();
             captureBtn.disabled = true;
-            reactionBtn.disabled = true;
-            reactionBtn.className = 'reaction-btn waiting';
-            reactionBtn.innerText = 'PREPARING LOOPBACK...';
-            reactionResult.innerText = 'Keep laptop/external speakers audible. Do not use headphones.';
+            calibrationPressBtn.disabled = true;
+            calibrationPressBtn.className = 'calibration-press-btn waiting';
+            calibrationPressBtn.innerText = 'PREPARING LOOPBACK...';
+            calibrationResult.innerText = 'Keep laptop/external speakers audible. Do not use headphones.';
             meterStatus.innerText = 'Preparing Acoustic Calibration...';
 
             try {
                 const calibration = await measureClickRegistrationAgainstAudio();
 
                 sessionLatencyOffsetMs = calibration.correctionMs;
-                reactionResult.innerText = `Calibration locked: ${sessionLatencyOffsetMs.toFixed(2)} ms correction`;
+                calibrationResult.innerText = `Calibration locked: ${sessionLatencyOffsetMs.toFixed(2)} ms correction`;
+                const calibrationTitleResult = document.getElementById('input-calibration-title-result');
+                calibrationTitleResult.textContent = ` : ${sessionLatencyOffsetMs.toFixed(2)} ms`;
+                calibrationTitleResult.hidden = false;
                 appendLog(
                     nowUTC(),
                     `[SESSION LOCKED] Correction ${sessionLatencyOffsetMs.toFixed(2)}ms = median mouse-vs-audio ${calibration.observedMouseVsAudioDeltaMs.toFixed(2)}ms + measured loopback ${calibration.effectiveAudioReferenceDelayMs.toFixed(2)}ms. Mouse MAD ${calibration.mouseDeltaMadMs.toFixed(2)}ms, range ${calibration.mouseDeltaRangeMs.toFixed(2)}ms. Probe MAD ${calibration.probeMadMs.toFixed(2)}ms, range ${calibration.probeRangeMs.toFixed(2)}ms.`
                 );
+                if (!inputCalibrationCompletedOnce) {
+                    unlockInputCalibrationCollapse();
+                    autoCollapseAfterCompletion = true;
+                }
             } catch (err) {
-                reactionResult.innerText = `Calibration failed: ${err.message}`;
+                calibrationResult.innerText = `Calibration failed: ${err.message}`;
                 appendLog(nowUTC(), `[CALIBRATION ERROR] ${err.message}`);
             } finally {
-                cancelReactionTest();
                 captureBtn.disabled = false;
-                reactionBtn.disabled = false;
-                reactionBtn.className = 'reaction-btn idle';
-                reactionBtn.innerText = 'Start Reaction Test';
+                calibrationPressBtn.disabled = true;
+                calibrationPressBtn.className = 'calibration-press-btn idle';
+                calibrationPressBtn.innerText = 'Calibration Press Button';
                 meterStatus.innerText = 'Input Level';
+                if (autoCollapseAfterCompletion) {
+                    setInputCalibrationCollapsed(true);
+                }
             }
         }
 
@@ -844,9 +1501,12 @@
 
         async function checkEngineStatus() {
             try {
-                fetch('/api/presence', { method: 'POST' }).catch(() => {});
+                fetch(`/api/presence?${browserPresenceQuery}`, {
+                    method: 'POST',
+                    cache: 'no-store'
+                }).catch(() => {});
 
-                const response = await fetch('/api/status');
+                const response = await fetch('/api/status', { cache: 'no-store' });
                 if (response.ok) {
                     const data = await response.json();
                     if (statusBadge.classList.contains('offline')) {

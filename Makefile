@@ -1,6 +1,9 @@
 # MAT Audio Lab - Development Workflow
 
 PID_FILE := /tmp/mat-port-forward.pid
+PORT_FORWARD_LOG := /tmp/mat-port-forward.log
+HEALTH_URL := http://127.0.0.1:8080
+BROWSER_URL := http://localhost:8080
 
 .PHONY: build load apply restart status stop-forward port-forward ensure-port refresh-browser logs deploy stop html help
 
@@ -30,20 +33,21 @@ status:
 
 stop-forward:
 	@echo "==> Cleaning up existing port-forward..."
-	@if [ -f $(PID_FILE) ]; then \
+	@if [ -s $(PID_FILE) ]; then \
 		kill -9 $$(cat $(PID_FILE)) 2>/dev/null || true; \
-		rm -f $(PID_FILE); \
 	fi
+	@rm -f $(PID_FILE)
 	@pgrep -f "kubectl port-forward svc/mat-audio-lab-service" | grep -v "$$$$" | xargs -r kill -9 2>/dev/null || true
 
 port-forward: stop-forward
 	@echo "==> Starting background port-forward (127.0.0.1:8080 -> 8080)..."
-	@nohup kubectl port-forward svc/mat-audio-lab-service 8080:8080 >/dev/null 2>&1 & echo $$! > $(PID_FILE)
+	@rm -f $(PORT_FORWARD_LOG)
+	@nohup kubectl port-forward --address 127.0.0.1 svc/mat-audio-lab-service 8080:8080 >$(PORT_FORWARD_LOG) 2>&1 & echo $$! > $(PID_FILE)
 
 ensure-port:
 	@echo "==> Checking port 8080 health..."
 	@for i in $$(seq 1 10); do \
-		if curl -s http://127.0.0.1:8080/healthz > /dev/null 2>&1; then \
+		if curl -4 -s $(HEALTH_URL)/healthz > /dev/null 2>&1; then \
 			echo "==> Port 8080 is active!"; \
 			exit 0; \
 		fi; \
@@ -52,29 +56,31 @@ ensure-port:
 	echo "==> Port 8080 not responding. Restarting tunnel..."; \
 	$(MAKE) port-forward; \
 	for i in $$(seq 1 10); do \
-		if curl -s http://127.0.0.1:8080/healthz > /dev/null 2>&1; then \
+		if curl -4 -s $(HEALTH_URL)/healthz > /dev/null 2>&1; then \
 			echo "==> Port-forward re-established!"; \
 			exit 0; \
 		fi; \
 		sleep 0.5; \
 	done; \
 	echo "==> [ERROR] Port-forward failed to connect."; \
+	echo "==> Port-forward diagnostics:"; \
+	tail -n 30 $(PORT_FORWARD_LOG) 2>/dev/null || true; \
 	exit 1
 
 refresh-browser: ensure-port
 	@echo "==> Checking if page is already open in browser..."
-	@if curl -s -f http://127.0.0.1:8080/api/check-browser > /dev/null 2>&1; then \
+	@if curl -4 -s -f $(BROWSER_URL)/api/check-browser > /dev/null 2>&1; then \
 		echo "==> Page is already open. Existing tab will reconnect automatically."; \
 	else \
-		echo "==> Page is NOT open. Opening http://127.0.0.1:8080..."; \
+		echo "==> Page is NOT open. Opening $(BROWSER_URL)..."; \
 		if command -v wslview >/dev/null 2>&1; then \
-			wslview http://127.0.0.1:8080 >/dev/null 2>&1 & \
+			wslview $(BROWSER_URL) >/dev/null 2>&1 & \
 		elif [ -f /mnt/c/Windows/System32/cmd.exe ]; then \
-			/mnt/c/Windows/System32/cmd.exe /c start http://127.0.0.1:8080 >/dev/null 2>&1 & \
+			/mnt/c/Windows/System32/cmd.exe /c start $(BROWSER_URL) >/dev/null 2>&1 & \
 		elif command -v cmd.exe >/dev/null 2>&1; then \
-			cmd.exe /c start http://127.0.0.1:8080 >/dev/null 2>&1 & \
+			cmd.exe /c start $(BROWSER_URL) >/dev/null 2>&1 & \
 		else \
-			python3 -c "import webbrowser; webbrowser.open('http://127.0.0.1:8080')" >/dev/null 2>&1 & \
+			python3 -c "import webbrowser; webbrowser.open('$(BROWSER_URL)')" >/dev/null 2>&1 & \
 		fi; \
 	fi
 

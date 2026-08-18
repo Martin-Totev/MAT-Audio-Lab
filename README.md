@@ -2,16 +2,18 @@
 
 > **In active development**
 
-MAT Audio Lab is a locally deployed web application for reaction-time testing and audio-assisted input-delay calibration. It combines a Go HTTP/DSP backend with a vanilla HTML/CSS/JavaScript frontend and runs in a local Kind Kubernetes cluster.
+MAT Audio Lab is a locally deployed web application for reaction-time, rhythm-timing, and audio-assisted input-delay testing. It combines a Go HTTP/DSP backend with a vanilla HTML/CSS/JavaScript frontend and runs in a local Kind Kubernetes cluster.
 
 ## Current Features
 
 - Browser-based reaction speed test using `pointerdown` timing.
-- Session input-delay calibration using the computer's physical speakers, microphone, and mouse.
+- Metronome timing test with 10, 30, and 60-second silent challenges at a random 50–180 BPM, followed by an expected-versus-actual tap timeline.
+- Session input-delay calibration using the computer's physical speakers, microphone, and mouse, with a collapsible result card after the first successful run.
 - Acoustic loopback calibration with one warm-up probe and five measured chirp probes.
 - Three physical mouse presses per calibration run for a more robust input-delay estimate.
 - Go-side WAV/PCM analysis using matched-filter probe detection, mouse transient detection, median/MAD statistics, and probe outlier rejection.
 - Automatic application status/heartbeat reporting in the UI.
+- Copyable live engine logs with optional start and end time bounds.
 - Browser-presence detection so the development workflow avoids opening duplicate tabs when possible.
 - Dockerized Go application deployed locally through Kind/Kubernetes.
 
@@ -42,7 +44,7 @@ web/
         └── MAT Software Solutions Logo.png
 ```
 
-The reaction test and calibration both use `pointerdown` rather than the DOM `click` event so the measured input event corresponds to the initial press rather than button release.
+The reaction test, metronome tap surface, and standalone calibration press control use `pointerdown` rather than the DOM `click` event so measured input corresponds to the initial press rather than button release.
 
 ### Infrastructure
 
@@ -51,7 +53,7 @@ The local deployment path is:
 ```text
 Browser
   ↓
-127.0.0.1:8080
+localhost:8080 (canonical browser URL)
   ↓ kubectl port-forward
 Kubernetes Service: mat-audio-lab-service
   ↓
@@ -60,7 +62,7 @@ Deployment: mat-audio-lab
 Go server :8080
 ```
 
-The Kubernetes Service is configured as `NodePort` with node port `30080`, but the provided development Makefile normally accesses it through `kubectl port-forward` on `127.0.0.1:8080`.
+The Kubernetes Service is configured as `NodePort` with node port `30080`, but the provided development Makefile normally accesses it through `kubectl port-forward` bound to `127.0.0.1:8080`. Browser tabs consistently use `http://localhost:8080` as the canonical origin so browser caches, permissions, and presence tracking are not split between two hostnames.
 
 ## Repository Layout
 
@@ -160,14 +162,14 @@ make deploy
 The application is then available at:
 
 ```text
-http://127.0.0.1:8080
+http://localhost:8080
 ```
 
 Press `Ctrl+C` to leave the live log stream. This does not delete the Kubernetes deployment.
 
 ## Input-Delay Calibration
 
-Before relying on corrected reaction times, use **Calibrate Input Delay** in the Reaction Speed Test panel.
+Before relying on corrected reaction or metronome timing, use **Calibrate Input Delay** in the standalone calibration card at the top of the middle control list.
 
 For the current calibration path:
 
@@ -179,9 +181,17 @@ For the current calibration path:
 - do not click while the acoustic probes are playing;
 - when prompted, perform three mouse presses at least roughly half a second apart.
 
-The browser records one continuous microphone stream while it plays one discarded warm-up chirp followed by five measured chirps. It then records three mouse presses on the same audio timeline. The WAV and timing metadata are sent to the Go DSP backend, which analyzes the probes and mouse transients and returns calibration statistics. The accepted session correction is applied to subsequent reaction-test results.
+The browser records one continuous microphone stream while it plays one discarded warm-up chirp followed by five measured chirps. It then records three mouse presses on the same audio timeline. The WAV and timing metadata are sent to the Go DSP backend, which analyzes the probes and mouse transients and returns calibration statistics. The accepted session correction is applied to subsequent reaction and metronome results.
+
+After the first successful calibration in a browser session, the card automatically collapses and its header continues to show the accepted correction. The card can then be expanded or collapsed manually without removing the detailed result inside it.
 
 Calibration requires browser support for `AudioContext.getOutputTimestamp()`.
+
+## Metronome Test
+
+The Metronome Test chooses a random integer tempo from 50 through 180 BPM. The beat plays at full volume for five seconds and fades linearly to silence over the next three seconds. The selected 10, 30, or 60-second difficulty is the silent challenge duration that follows the fade.
+
+Tap the test surface throughout the audible and fading phases to learn the tempo. Only `pointerdown` events during the silent phase are scored. Each tap is compared with the nearest expected continuation of the original beat grid, and each expected beat can be counted only once. At the end, the UI reports the mean absolute timing error in milliseconds along with captured and missed beat counts. A successful Input Delay Calibration correction is applied to the tap timestamps, and a themed timeline visualizes the expected beats alongside every recorded silent-phase tap.
 
 ## Makefile Commands
 
@@ -281,7 +291,7 @@ Checks `/healthz` on port `8080` and attempts to restart the port-forward if the
 make refresh-browser
 ```
 
-Checks `/api/check-browser`. If no active UI heartbeat has been seen recently, the Makefile attempts to open `http://127.0.0.1:8080`.
+Checks `/api/check-browser` for a live tab on the canonical `localhost:8080` origin. If none is active, the Makefile attempts to open `http://localhost:8080`.
 
 ### Stream logs
 
@@ -343,5 +353,4 @@ The Deployment uses the `Recreate` strategy and is intended for local developmen
 
 - The container is built as a multi-stage image. Go compilation happens in `golang:1.25-alpine`, while the runtime image is `scratch` and contains only the compiled application and the `web` directory.
 - Uploaded WAVs are stored in an in-memory Go map. They are not persisted across application restarts.
-- The current UI includes a second expandable button/workspace that is still a placeholder.
 - The project is under active development, so calibration behavior and UI controls may continue to change.

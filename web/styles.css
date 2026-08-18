@@ -180,6 +180,10 @@
             border-color: var(--accent-cyan);
         }
 
+        .reaction-test-wrapper.open .expandable-panel {
+            height: 120px;
+        }
+
         .workspace-box {
             border: 1px solid var(--border);
             border-radius: 6px;
@@ -256,14 +260,117 @@
             border-radius: 6px;
             height: 150px;
             overflow-y: auto;
-            font-size: 0.85rem;
+            font-size: calc(0.85rem - 1pt);
             color: var(--text-dim);
+            scrollbar-width: thin;
+            scrollbar-color: #3b6570 #101014;
+        }
+
+        .console-log::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        .console-log::-webkit-scrollbar-track {
+            background: #101014;
+            border-left: 1px solid var(--border);
+            border-radius: 0 5px 5px 0;
+        }
+
+        .console-log::-webkit-scrollbar-thumb {
+            background: #3b6570;
+            border: 2px solid #101014;
+            border-radius: 999px;
+        }
+
+        .console-log::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-cyan);
         }
 
         .log-entry {
             margin-bottom: 0.3rem;
         }
         .log-time { color: var(--accent-cyan); }
+
+        .log-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .log-card-header .metric-label {
+            margin-bottom: 0;
+        }
+
+        .log-copy-btn {
+            padding: 0.45rem 0.75rem;
+            font-size: 0.72rem;
+            white-space: nowrap;
+        }
+
+        .log-copy-range {
+            min-width: 0;
+            margin: 0.75rem 0 0;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #101014;
+        }
+
+        .log-copy-range legend {
+            padding: 0 0.4rem;
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            letter-spacing: 0.45px;
+            text-transform: uppercase;
+        }
+
+        .log-bound-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+            gap: 0.65rem;
+        }
+
+        .log-bound-field {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            gap: 0.35rem;
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            text-transform: uppercase;
+        }
+
+        .log-bound-field input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.45rem;
+            background: #08080a;
+            color: var(--text-main);
+            font: inherit;
+            color-scheme: dark;
+            outline: none;
+        }
+
+        .log-bound-field input:focus {
+            border-color: var(--accent-cyan);
+            box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.12);
+        }
+
+        .log-copy-status {
+            min-height: 1.1em;
+            margin-top: 0.6rem;
+            color: var(--text-dim);
+            font-size: 0.68rem;
+            line-height: 1.35;
+        }
+
+        .log-copy-status.error {
+            color: var(--status-red);
+        }
         
         .mat-logo-link {
             position: absolute;
@@ -306,9 +413,10 @@
             color: var(--accent-cyan);
             border: 1px solid var(--accent-cyan);
         }
-        .reaction-btn.idle:hover {
+        .reaction-btn.idle:hover:not(:disabled) {
             background: rgba(0, 240, 255, 0.15);
         }
+
 
         /* Waiting for Green State */
         .reaction-btn.waiting {
@@ -326,13 +434,45 @@
             box-shadow: 0 0 15px rgba(0, 255, 102, 0.5);
         }
 
-        .lab-btn-shell {
-            position: relative;
+        .calibration-press-btn {
             width: 100%;
+            padding: 0.75rem 1rem;
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .lab-btn-shell .lab-btn {
-            padding-left: 3.15rem;
+        .calibration-press-btn.idle {
+            background: transparent;
+            color: var(--accent-cyan);
+            border: 1px solid var(--accent-cyan);
+        }
+
+        .calibration-press-btn.idle:hover:not(:disabled) {
+            background: rgba(0, 240, 255, 0.15);
+        }
+
+        .calibration-press-btn.waiting {
+            background: #101014;
+            color: var(--status-red);
+            border: 1px solid var(--status-red);
+        }
+
+        .calibration-press-btn.ready {
+            background: var(--status-green);
+            color: #000;
+            border: 1px solid var(--status-green);
+            box-shadow: 0 0 15px rgba(0, 255, 102, 0.5);
+        }
+
+        .calibration-press-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
         }
 
         .calibration-action-row {
@@ -351,26 +491,6 @@
             position: relative;
             display: inline-flex;
             flex: 0 0 auto;
-        }
-
-        .calibration-help.header-help {
-            position: absolute;
-            left: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            z-index: 20;
-        }
-
-        .calibration-help.header-help .calibration-help-popover {
-            left: auto;
-            /* Keep the tooltip fully to the left of the help icon so it does
-               not cover the second control/panel below and to the right. */
-            right: calc(100% + 24px);
-            /* Align the tooltip near the header-title text instead of below the icon. */
-            top: 8px;
-            bottom: auto;
-            transform: none;
-            width: min(340px, calc(100vw - 2rem));
         }
 
         .calibration-help-btn {
@@ -421,4 +541,393 @@
         .calibration-help:focus-within .calibration-help-popover {
             opacity: 1;
             visibility: visible;
+        }
+
+        .reaction-test-controls,
+        .input-calibration-press-controls {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .control-result {
+            min-height: 1.2em;
+            color: var(--accent-cyan);
+            font-size: 0.85rem;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .calibration-card-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-start;
+            gap: 1rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .calibration-card h2 {
+            margin: 0;
+            color: var(--accent-cyan);
+            font-size: 1rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .calibration-card .calibration-help-popover {
+            top: calc(100% + 10px);
+            right: calc(100% + 12px);
+            bottom: auto;
+            left: auto;
+            width: min(340px, calc(100vw - 4rem));
+            transform: none;
+        }
+
+        .calibration-workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+            margin-top: 0.75rem;
+            padding: 0.85rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #101014;
+        }
+
+        .metronome-test-wrapper.open .expandable-panel {
+            height: auto;
+        }
+
+        .metronome-workspace {
+            align-items: stretch;
+            gap: 0.75rem;
+            padding: 1rem;
+        }
+
+        .metronome-difficulty .metric-label {
+            margin-bottom: 0.5rem;
+            text-align: left;
+        }
+
+        .metronome-duration-group {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.5rem;
+        }
+
+        .metronome-duration-btn {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.55rem 0.35rem;
+            background: #08080a;
+            color: var(--text-dim);
+            font: inherit;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+        }
+
+        .metronome-duration-btn:hover:not(:disabled),
+        .metronome-duration-btn.selected {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 240, 255, 0.12);
+            color: var(--accent-cyan);
+        }
+
+        .metronome-duration-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .metronome-readout {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--accent-cyan);
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+
+        .metronome-progress-track {
+            height: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: #08080a;
+        }
+
+        .metronome-progress {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-cyan), var(--status-green));
+            transition: width 0.05s linear;
+        }
+
+        .metronome-start-btn {
+            width: 100%;
+        }
+
+        .metronome-tap-btn {
+            width: 100%;
+            min-height: 64px;
+            border: 1px solid var(--border);
+            border-radius: 5px;
+            background: #08080a;
+            color: var(--text-dim);
+            font: inherit;
+            font-size: 1rem;
+            font-weight: bold;
+            letter-spacing: 0.65px;
+            text-transform: uppercase;
+            cursor: pointer;
+            touch-action: manipulation;
+            user-select: none;
+            transition: transform 0.06s ease, border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .metronome-tap-btn.practice {
+            border-color: var(--accent-cyan);
+            color: var(--accent-cyan);
+        }
+
+        .metronome-tap-btn.fading {
+            border-color: #ffb000;
+            color: #ffb000;
+        }
+
+        .metronome-tap-btn.scoring {
+            border-color: var(--status-green);
+            color: var(--status-green);
+            box-shadow: 0 0 12px rgba(0, 255, 102, 0.18);
+        }
+
+        .metronome-tap-btn.registered {
+            transform: scale(0.985);
+            background: rgba(0, 255, 102, 0.14);
+        }
+
+        .metronome-tap-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+
+        .metronome-status {
+            min-height: 2.5em;
+            color: var(--text-dim);
+            font-size: 0.73rem;
+            line-height: 1.35;
+            text-align: center;
+        }
+
+        .metronome-result {
+            min-height: 1.2em;
+            color: var(--accent-cyan);
+            font-size: 0.86rem;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .calibration-card-header > div {
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+
+        .calibration-collapse-btn {
+            display: inline-flex;
+            flex: 0 0 auto;
+            align-items: center;
+            gap: 0.4rem;
+            margin-left: auto;
+            border: 1px solid var(--accent-cyan);
+            border-radius: 4px;
+            padding: 0.35rem 0.5rem;
+            background: transparent;
+            color: var(--accent-cyan);
+            font: inherit;
+            font-size: 0.68rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+        }
+
+        .calibration-collapse-btn:hover:not(:disabled),
+        .calibration-collapse-btn:focus-visible {
+            background: rgba(0, 240, 255, 0.14);
+            outline: none;
+        }
+
+        .calibration-collapse-btn:disabled {
+            border-color: var(--border);
+            color: var(--text-dim);
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .calibration-collapse-arrow {
+            display: inline-block;
+            transition: transform 0.2s ease;
+        }
+
+        .calibration-card.collapsed .calibration-collapse-arrow {
+            transform: rotate(180deg);
+        }
+
+        .calibration-collapse-region {
+            display: grid;
+            grid-template-rows: 1fr;
+            transition: grid-template-rows 0.25s ease;
+        }
+
+        .calibration-collapse-inner {
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .calibration-card.collapsed .calibration-collapse-region {
+            grid-template-rows: 0fr;
+        }
+
+        .metronome-test-wrapper.timeline-visible.open .expandable-panel {
+            height: auto;
+        }
+
+        .metronome-timeline[hidden] {
+            display: none;
+        }
+
+        .metronome-timeline {
+            box-sizing: border-box;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: #08080a;
+            opacity: 0;
+            transform: translateY(10px) scale(0.985);
+        }
+
+        .metronome-timeline.revealed {
+            animation: metronome-timeline-in 0.24s ease forwards;
+        }
+
+        @keyframes metronome-timeline-in {
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .metronome-timeline-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 0.65rem;
+        }
+
+        .metronome-timeline-header .metric-label {
+            margin: 0;
+        }
+
+        .metronome-timeline-legend {
+            display: flex;
+            gap: 0.65rem;
+            color: var(--text-dim);
+            font-size: 0.62rem;
+            text-transform: uppercase;
+        }
+
+        .metronome-timeline-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+
+        .metronome-timeline-legend i {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+        }
+
+        .metronome-timeline-legend i.expected {
+            border-radius: 1px;
+            background: var(--accent-cyan);
+        }
+
+        .metronome-timeline-legend i.actual {
+            background: var(--status-green);
+        }
+
+        .metronome-timeline-row {
+            display: grid;
+            grid-template-columns: 58px minmax(0, 1fr);
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 0.45rem;
+        }
+
+        .metronome-timeline-label {
+            color: var(--text-dim);
+            font-size: 0.62rem;
+            text-align: right;
+            text-transform: uppercase;
+        }
+
+        .metronome-timeline-track {
+            position: relative;
+            height: 22px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: 3px;
+            background:
+                repeating-linear-gradient(
+                    90deg,
+                    transparent 0,
+                    transparent calc(10% - 1px),
+                    rgba(173, 173, 184, 0.12) calc(10% - 1px),
+                    rgba(173, 173, 184, 0.12) 10%
+                ),
+                #101014;
+        }
+
+        .metronome-timeline-marker {
+            position: absolute;
+            top: 3px;
+            left: 0;
+            display: block;
+            transform: translateX(-50%);
+        }
+
+        .metronome-timeline-marker.expected {
+            width: 1px;
+            height: 16px;
+            background: var(--accent-cyan);
+            box-shadow: 0 0 4px rgba(0, 240, 255, 0.4);
+        }
+
+        .metronome-timeline-marker.actual {
+            top: 6px;
+            width: 10px;
+            height: 10px;
+            border: 1px solid #08080a;
+            border-radius: 50%;
+            background: var(--status-green);
+            box-shadow: 0 0 5px rgba(0, 255, 102, 0.45);
+        }
+
+        .metronome-timeline-marker.actual.off-beat {
+            background: var(--status-red);
+            box-shadow: 0 0 5px rgba(255, 51, 102, 0.45);
+        }
+
+        .metronome-timeline-axis {
+            display: flex;
+            justify-content: space-between;
+            margin: 0.35rem 0 0 66px;
+            color: var(--text-dim);
+            font-size: 0.6rem;
         }

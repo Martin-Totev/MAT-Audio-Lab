@@ -13,45 +13,71 @@
 
     <!-- Vertically Stacked Controls with Expandable Panels -->
     <div class="center-controls">
-        <!-- Button 1 Container -->
-        <div id="wrapper-1" class="btn-wrapper">
-            <div class="lab-btn-shell">
-                <span class="calibration-help header-help">
+        <!-- Standalone Input Calibration Section -->
+        <section id="input-calibration-card" class="card calibration-card" aria-labelledby="calibration-title">
+            <div class="calibration-card-header">
+                <span class="calibration-help">
                     <button class="calibration-help-btn" type="button" aria-label="Input-delay calibration instructions">?</button>
                     <span id="calibration-help-text" class="calibration-help-popover" role="tooltip">
                         Calibrate Input Delay before relying on corrected reaction times. Use physical speakers, not headphones. Keep the microphone unobstructed and speaker volume clearly audible. You will hear 1 warm-up pip and 5 measured pips; do not click during them. When prompted, press the calibration button 3 times, at least about half a second apart. Keep the mouse, microphone, and speakers in the same positions until calibration finishes.
                     </span>
                 </span>
-                <button id="btn-1" class="lab-btn" onclick="toggleButton('1')">
-                    <span>Reaction Speed Test</span>
-                    <span class="arrow">▼</span>
+                <div>
+                    <div class="metric-label">Session Setup</div>
+                    <h2 id="calibration-title">Input Delay Calibration<span id="input-calibration-title-result" hidden></span></h2>
+                </div>
+                <button id="input-calibration-toggle" class="calibration-collapse-btn" type="button" disabled aria-expanded="true" aria-controls="input-calibration-region" title="Complete calibration once to unlock collapsing">
+                    <span id="input-calibration-toggle-label">Collapse</span>
+                    <span class="calibration-collapse-arrow" aria-hidden="true">▲</span>
                 </button>
             </div>
+
+            <div id="input-calibration-region" class="calibration-collapse-region">
+                <div class="calibration-collapse-inner">
+                    <div class="calibration-workspace">
+                <div class="calibration-action-row">
+                    <button id="input-calibration-start-btn" class="sub-btn" onclick="startInputCalibration()" aria-describedby="calibration-help-text">
+                        🔊🎙️ Calibrate Input Delay
+                    </button>
+                </div>
+
+                <div class="meter-container">
+                    <div class="meter-label-row">
+                        <span id="input-calibration-meter-status">Input Level</span>
+                        <span id="input-calibration-timer">00:13</span>
+                    </div>
+                    <div class="meter-track">
+                        <div id="input-calibration-meter-fill" class="meter-fill"></div>
+                    </div>
+                </div>
+
+                <div class="input-calibration-press-controls">
+                    <button id="input-calibration-press-btn" class="calibration-press-btn idle" type="button" disabled aria-describedby="calibration-help-text">
+                        Calibration Press Button
+                    </button>
+                    <div id="input-calibration-result" class="control-result">
+                        -- ms correction
+                    </div>
+                </div>
+            </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Button 1 Container -->
+        <div id="wrapper-1" class="btn-wrapper reaction-test-wrapper">
+            <button id="btn-1" class="lab-btn" onclick="toggleButton('1')">
+                <span>Reaction Speed Test</span>
+                <span class="arrow">▼</span>
+            </button>
             <div class="expandable-panel">
                 <div class="workspace-box">
-                    <!-- Audio Streamer Section -->
-                    <div class="calibration-action-row">
-                        <button id="capture-btn" class="sub-btn" onclick="streamAudioToGo()" aria-describedby="calibration-help-text">
-                            🔊🎙️ Calibrate Input Delay
-                        </button>
-                    </div>
-                    
-                    <div class="meter-container">
-                        <div class="meter-label-row">
-                            <span id="meter-status">Input Level</span>
-                            <span id="timer-label">00:10</span>
-                        </div>
-                        <div class="meter-track">
-                            <div id="meter-fill" class="meter-fill"></div>
-                        </div>
-                    </div>
-
                     <!-- Reaction Speed Tester Section -->
-                    <div style="width: 100%; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
-                        <button id="reaction-btn" class="reaction-btn idle">
+                    <div class="reaction-test-controls">
+                        <button id="reaction-test-btn" class="reaction-btn idle" type="button">
                             Start Reaction Test
                         </button>
-                        <div id="reaction-result" style="font-size: 0.85rem; color: var(--accent-cyan); font-weight: bold; min-height: 1.2em;">
+                        <div id="reaction-test-result" class="control-result">
                             -- ms
                         </div>
                     </div>
@@ -59,15 +85,68 @@
             </div>
         </div>
 
-        <!-- Button 2 Container -->
-        <div id="wrapper-2" class="btn-wrapper">
+        <!-- Metronome Test Container -->
+        <div id="wrapper-2" class="btn-wrapper metronome-test-wrapper">
             <button id="btn-2" class="lab-btn" onclick="toggleButton('2')">
-                <span>Execute Button 2</span>
+                <span>Metronome Test</span>
                 <span class="arrow">▼</span>
             </button>
             <div class="expandable-panel">
-                <div class="workspace-box">
-                    <span style="color: var(--text-dim); font-size: 0.8rem;">[ Button 2 Dynamic Workspace ]</span>
+                <div class="workspace-box metronome-workspace">
+                    <div class="metronome-difficulty">
+                        <div class="metric-label">Silent Challenge Duration</div>
+                        <div class="metronome-duration-group" role="group" aria-label="Metronome test duration">
+                            <button class="metronome-duration-btn selected" type="button" data-duration="10" aria-pressed="true">10 sec</button>
+                            <button class="metronome-duration-btn" type="button" data-duration="30" aria-pressed="false">30 sec</button>
+                            <button class="metronome-duration-btn" type="button" data-duration="60" aria-pressed="false">60 sec</button>
+                        </div>
+                    </div>
+
+                    <div class="metronome-readout" aria-live="polite">
+                        <span id="metronome-bpm">-- BPM</span>
+                        <span id="metronome-timer">00:10</span>
+                    </div>
+
+                    <div class="metronome-progress-track" aria-hidden="true">
+                        <div id="metronome-progress" class="metronome-progress"></div>
+                    </div>
+
+                    <button id="metronome-start-btn" class="sub-btn metronome-start-btn" type="button">
+                        Start Metronome Test
+                    </button>
+
+                    <button id="metronome-tap-btn" class="metronome-tap-btn" type="button" disabled>
+                        Tap the Beat
+                    </button>
+
+                    <div id="metronome-status" class="metronome-status" role="status" aria-live="polite">
+                        The beat plays for 5 seconds, fades for 3, then goes silent.
+                    </div>
+                    <div id="metronome-result" class="metronome-result" aria-live="polite">
+                        -- ms average error
+                    </div>
+
+                    <div id="metronome-timeline" class="metronome-timeline" hidden aria-labelledby="metronome-timeline-title">
+                        <div class="metronome-timeline-header">
+                            <div id="metronome-timeline-title" class="metric-label">Silent Timing Timeline</div>
+                            <div class="metronome-timeline-legend" aria-hidden="true">
+                                <span><i class="expected"></i>Expected</span>
+                                <span><i class="actual"></i>Actual</span>
+                            </div>
+                        </div>
+                        <div class="metronome-timeline-row">
+                            <span class="metronome-timeline-label">Expected</span>
+                            <div id="metronome-expected-track" class="metronome-timeline-track expected-track"></div>
+                        </div>
+                        <div class="metronome-timeline-row">
+                            <span class="metronome-timeline-label">Actual</span>
+                            <div id="metronome-actual-track" class="metronome-timeline-track actual-track"></div>
+                        </div>
+                        <div class="metronome-timeline-axis">
+                            <span>0s</span>
+                            <span id="metronome-timeline-end">10s</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -94,11 +173,32 @@
         </div>
 
         <div class="card">
-            <div class="metric-label" style="margin-bottom: 0.8rem;">Live Engine Log Feed</div>
-            <div id="console" class="console-log">
-                <div class="log-entry"><span class="log-time">[LOCAL]</span> UI loaded in standalone editing mode.</div>
+            <div class="log-card-header">
+                <div class="metric-label">Live Engine Log Feed</div>
+                <button id="copy-logs-btn" class="sub-btn log-copy-btn" type="button">
+                    Copy Logs
+                </button>
             </div>
+            <div id="console" class="console-log" aria-live="polite"></div>
+
+            <fieldset class="log-copy-range">
+                <legend>Copy Time Bounds (Optional)</legend>
+                <div class="log-bound-grid">
+                    <label class="log-bound-field" for="log-copy-from">
+                        <span>From (Local Time)</span>
+                        <input id="log-copy-from" type="datetime-local" step="1">
+                    </label>
+                    <label class="log-bound-field" for="log-copy-through">
+                        <span>Through (Local Time)</span>
+                        <input id="log-copy-through" type="datetime-local" step="1">
+                    </label>
+                </div>
+                <div id="log-copy-status" class="log-copy-status" role="status" aria-live="polite">
+                    Blank bounds copy the complete session log.
+                </div>
+            </fieldset>
         </div>
+
     </div>
 
     <script src="app.js"></script>

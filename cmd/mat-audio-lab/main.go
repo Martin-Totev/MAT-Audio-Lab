@@ -3,12 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"mat-audio-lab/pkg/backend"
+	"mat-audio-lab/pkg/dsp"
 	"net/http"
 	"os"
 	"sync"
 	"time"
-	"mat-audio-lab/pkg/backend"
-	"mat-audio-lab/pkg/dsp"
 )
 
 type EngineStatus struct {
@@ -17,11 +17,25 @@ type EngineStatus struct {
 	Environment string `json:"environment"`
 }
 
+const browserPresenceTTL = 4 * time.Second
+
+type BrowserTabPresence struct {
+	Host     string
+	LastSeen time.Time
+}
+
 var (
-	activeTabs   int
-	lastSeenTab  time.Time
+	browserTabs  = make(map[string]BrowserTabPresence)
 	presenceLock sync.Mutex
 )
+
+func browserTabKey(r *http.Request) string {
+	tabID := r.URL.Query().Get("tab_id")
+	if tabID == "" {
+		tabID = "legacy"
+	}
+	return r.Host + "|" + tabID
+}
 
 func main() {
 	fmt.Println("=================================================================")
@@ -54,18 +68,51 @@ func main() {
 
 	// Heartbeat sent by open index.html tabs every second
 	http.HandleFunc("/api/presence", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
 		presenceLock.Lock()
-		lastSeenTab = time.Now()
+		browserTabs[browserTabKey(r)] = BrowserTabPresence{
+			Host:     r.Host,
+			LastSeen: time.Now(),
+		}
+		presenceLock.Unlock()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	http.HandleFunc("/api/presence/close", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		presenceLock.Lock()
+		delete(browserTabs, browserTabKey(r))
 		presenceLock.Unlock()
 		w.WriteHeader(http.StatusOK)
 	})
 
 	// Endpoint queried by Makefile to check if page is already open in a browser
 	http.HandleFunc("/api/check-browser", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		presenceLock.Lock()
 		defer presenceLock.Unlock()
 
-		if time.Since(lastSeenTab) < 15*time.Second {
+		now := time.Now()
+		canonicalTabOpen := false
+		for key, presence := range browserTabs {
+			if now.Sub(presence.LastSeen) >= browserPresenceTTL {
+				delete(browserTabs, key)
+				continue
+			}
+			if presence.Host == r.Host {
+				canonicalTabOpen = true
+			}
+		}
+
+		if canonicalTabOpen {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OPEN"))
 			return
@@ -77,7 +124,12 @@ func main() {
 
 	// Serve static assets from ./web
 	fs := http.FileServer(http.Dir("./web"))
-	http.Handle("/", fs)
+	http.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+		fs.ServeHTTP(w, r)
+	}))
 
 	// Health check endpoint for Kubernetes
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
