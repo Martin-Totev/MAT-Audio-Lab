@@ -2,7 +2,7 @@
 
 > **In active development**
 
-MAT Audio Lab is a locally deployed web application for reaction-time, rhythm-timing, and audio-assisted input-delay testing. It combines a Go HTTP/DSP backend with a vanilla HTML/CSS/JavaScript frontend and runs in a local Kind Kubernetes cluster.
+MAT Audio Lab is a locally deployed web application for reaction-time, rhythm-timing, and audio-assisted input-delay testing and calibration. It combines a Go HTTP/DSP backend with a vanilla HTML/CSS/JavaScript frontend and runs in a local Kind Kubernetes cluster. Development is focused on expanding functionality beyond reaction-time testing.
 
 ## Current Features
 
